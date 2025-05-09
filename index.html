@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Словник</title>
+    <style>
+         html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+            transition: background 0.3s, color 0.3s;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 500px;
+        }
+        input, button, select {
+            margin: 5px;
+            padding: 10px;
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        input[type="file"] {
+            width: auto;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #ddd;
+        }
+        .dark-mode {
+            background-color: #333;
+            color: white;
+        }
+        .dark-mode .container {
+            background: #444;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #e0e0e0;
+            text-align: center;
+        }
+        .result.correct {
+            background-color: #4caf50;
+            color: white;
+        }
+        .result.incorrect {
+            background-color: #f44336;
+            color: white;
+        }
+        .answers {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+        }
+        .answer-button {
+            margin: 5px;
+            padding: 10px;
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            background-color: #f1f1f1;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .answer-button:hover {
+            background-color: #dcdcdc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Словник</h2>
+        <input type="text" id="wordInput" placeholder="Введіть слово">
+        <input type="text" id="translationInput" placeholder="Переклад">
+        <button onclick="addWord()">Додати</button>
+        <button onclick="downloadWords()">Зберегти у файл</button>
+        <button onclick="searchWord()"> Знайти</button>
+        <button onclick="toggleTheme()"> Змінити тему</button>
+        <input type="file" id="fileInput" accept=".txt" onchange="loadFromFile(event)">
+        <button onclick="startLearning()"> Вчити слова</button>
+        <input type="number" id="questionCountInput" placeholder="Кількість питань" min="1">
+        <select id="categorySelect"></select>
+        <ul id="wordList"></ul>
+        <p id="searchResult"></p>
+
+        <div id="resultMessage" class="result"></div>
+
+        <div id="answerButtons" class="answers"></div>
+    </div>
+    
+    <script>
+        let wordsByCategory = {};
+        let correctAnswers = 0;
+        let currentQuestionIndex = 0;
+        let quizQuestions = [];
+        let totalQuestions = 0;
+        let currentQuestion = null;
+        document.addEventListener("DOMContentLoaded", loadWords);
+        
+        function loadWords() {
+            let storedWords = JSON.parse(localStorage.getItem("words")) || {};
+            wordsByCategory = storedWords;
+            updateCategorySelect();
+        }
+        
+        function updateCategorySelect() {
+            let select = document.getElementById("categorySelect");
+            select.innerHTML = "";
+            Object.keys(wordsByCategory).forEach(category => {
+                let option = document.createElement("option");
+                option.value = category;
+                option.textContent = category;
+                select.appendChild(option);
+            });
+        }
+        
+        function addWord() {
+            let wordInput = document.getElementById("wordInput").value.trim();
+            let translationInput = document.getElementById("translationInput").value.trim();
+            let category = document.getElementById("categorySelect").value;
+            const uaRegex = /^[\u0400-\u04FF\s]+$/;
+            const czRegex = /^[a-zA-ZáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ\s]+$/;
+
+            if (!category) return alert("Виберіть тему.");
+            if (!wordInput || !translationInput) return alert("Заповніть обидва поля.");
+            if (!uaRegex.test(wordInput)) return alert("Перше слово має бути українською.");
+            if (!czRegex.test(translationInput)) return alert("Переклад має бути чеською.");
+
+            if (!wordsByCategory[category]) wordsByCategory[category] = [];
+            wordsByCategory[category].push({ word: wordInput, translation: translationInput });
+            localStorage.setItem("words", JSON.stringify(wordsByCategory));
+            loadWords();
+        }
+        
+        function downloadWords() {
+            let lines = [];
+            for (let category in wordsByCategory) {
+                lines.push(`#${category}`);
+                wordsByCategory[category].forEach(entry => {
+                    lines.push(`${entry.word} - ${entry.translation}`);
+                });
+            }
+
+            const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "words.txt";
+            link.click();
+        }
+
+        function searchWord() {
+            let wordInput = document.getElementById("wordInput").value.trim().toLowerCase();
+            let translationInput = document.getElementById("translationInput").value.trim().toLowerCase();
+            let results = [];
+
+            for (let category in wordsByCategory) {
+                for (let entry of wordsByCategory[category]) {
+                    if (
+                        (wordInput && (entry.word.toLowerCase() === wordInput || entry.translation.toLowerCase() === wordInput)) ||
+                        (translationInput && (entry.word.toLowerCase() === translationInput || entry.translation.toLowerCase() === translationInput))
+                    ) {
+                        results.push(`${entry.word} - ${entry.translation} (Тема: ${category})`);
+                    }
+                }
+            }
+
+            const resultElement = document.getElementById("searchResult");
+            if (results.length > 0) {
+                resultElement.textContent = "Знайдено:\n" + results.join("\n");
+            } else {
+                resultElement.textContent = "Слово не знайдено";
+            }
+        }
+
+
+        
+        function toggleTheme() {
+            document.body.classList.toggle("dark-mode");
+        }
+        
+        function loadFromFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split("\n");
+                let currentCategory = "";
+                
+                lines.forEach(line => {
+                    line = line.trim();
+                    if (line.startsWith("#")) {
+                        currentCategory = line.substring(1).trim();
+                        wordsByCategory[currentCategory] = [];
+                    } else {
+                        const parts = line.split("-");
+                        if (parts.length === 2) {
+                            wordsByCategory[currentCategory].push({ word: parts[0].trim(), translation: parts[1].trim() });
+                        }
+                    }
+                });
+                
+                localStorage.setItem("words", JSON.stringify(wordsByCategory));
+                loadWords();
+            };
+            reader.readAsText(file);
+        }
+        
+        function startLearning() {
+            let selectedCategory = document.getElementById("categorySelect").value;
+            let questionCount = parseInt(document.getElementById("questionCountInput").value);
+
+            if (!selectedCategory || !wordsByCategory[selectedCategory]) return;
+
+            let allWords = [...wordsByCategory[selectedCategory]];
+            if (allWords.length === 0) return;
+
+            quizQuestions = shuffleArray(allWords);
+
+            if (questionCount > 0 && questionCount < quizQuestions.length) {
+                quizQuestions = quizQuestions.slice(0, questionCount);
+            }
+
+            correctAnswers = 0;
+            currentQuestionIndex = 0;
+            totalQuestions = quizQuestions.length;
+
+            askQuestion();
+        }
+
+        function askQuestion() {
+            let resultMessage = document.getElementById("resultMessage");
+            let answerButtons = document.getElementById("answerButtons");
+
+            resultMessage.classList.remove("correct", "incorrect");
+            resultMessage.textContent = "";
+            answerButtons.innerHTML = "";
+
+            if (currentQuestionIndex >= totalQuestions) {
+                resultMessage.textContent = `Тест завершено! ${correctAnswers}/${totalQuestions} правильних відповідей.`;
+                resultMessage.classList.add(correctAnswers === totalQuestions ? "correct" : "incorrect");
+                return;
+            }
+
+            currentQuestion = quizQuestions[currentQuestionIndex];
+            currentQuestionIndex++;
+
+            let isCzech = Math.random() > 0.5;
+            let question = isCzech ? currentQuestion.word : currentQuestion.translation;
+            let correctAnswer = isCzech ? currentQuestion.translation : currentQuestion.word;
+
+            let options = [correctAnswer];
+            while (options.length < 4) {
+                let randomWord = quizQuestions[Math.floor(Math.random() * quizQuestions.length)];
+                let wrongAnswer = isCzech ? randomWord.translation : randomWord.word;
+                if (!options.includes(wrongAnswer)) {
+                    options.push(wrongAnswer);
+                }
+            }
+            options.sort(() => Math.random() - 0.5);
+
+            resultMessage.textContent = `Питання ${currentQuestionIndex} з ${totalQuestions}: ${question}`;
+
+            options.forEach((option, index) => {
+                let button = document.createElement("button");
+                button.classList.add("answer-button");
+                button.textContent = `${index + 1}. ${option}`;
+                button.onclick = () => checkAnswer(option, correctAnswer);
+                answerButtons.appendChild(button);
+            });
+        }
+
+        function checkAnswer(userAnswer, correctAnswer) {
+            let resultMessage = document.getElementById("resultMessage");
+            if (userAnswer === correctAnswer) {
+                correctAnswers++;
+                resultMessage.textContent = "Правильно!";
+                resultMessage.classList.add("correct");
+            } else {
+                resultMessage.textContent = `Неправильно. Правильна відповідь: ${correctAnswer}`;
+                resultMessage.classList.add("incorrect");
+            }
+
+            document.getElementById("answerButtons").innerHTML = "";
+            setTimeout(() => askQuestion(), 1000);
+        }
+
+        function shuffleArray(array) {
+            return array.sort(() => Math.random() - 0.5);
+        }
+
+    </script>
+</body>
+</html>
